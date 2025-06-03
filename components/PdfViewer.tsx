@@ -14,6 +14,7 @@ import type {
     Segment      
 } from '../types';
 import type { PDFPageProxy, RenderTask } from 'pdfjs-dist';
+// import { logger } from '../utils/logger'; // Removed for production
 
 // Type guards (can be simplified if wall drawing state is fully removed)
 function isGridPoint(point: any): point is GridPoint {
@@ -96,35 +97,57 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
 
   const renderTaskRef = useRef<RenderTask | null>(null);
 
-  const calculateGridLayout = useCallback((canvasWidth: number, canvasHeight: number, currentGridDimensions: GridDimensions): GridLayoutInfo | null => {
+  const calculateGridLayout = useCallback((canvasWidth: number, canvasHeight: number, currentGridDimensions: GridDimensions, cropArea?: CanvasPixelCropArea | null): GridLayoutInfo | null => {
     if (!currentGridDimensions || currentGridDimensions.width_grids <= 0 || currentGridDimensions.height_grids <= 0 || canvasWidth <= 0 || canvasHeight <= 0) {
       return null;
     }
     const targetGridWidthCount = currentGridDimensions.width_grids;
     const targetGridHeightCount = currentGridDimensions.height_grids;
 
-    const cellWidth = canvasWidth / targetGridWidthCount;
-    const cellHeight = canvasHeight / targetGridHeightCount;
+    let gridOffsetX = 0;
+    let gridOffsetY = 0;
+    let gridWidth = canvasWidth;
+    let gridHeight = canvasHeight;
 
+    // If we have a crop area, calculate grid within that area
+    if (cropArea && cropArea.width > 0 && cropArea.height > 0) {
+      gridOffsetX = cropArea.x;
+      gridOffsetY = cropArea.y;
+      gridWidth = cropArea.width;
+      gridHeight = cropArea.height;
+    }
+
+    // Calculate cell size to fit the grid area
+    const cellWidth = gridWidth / targetGridWidthCount;
+    const cellHeight = gridHeight / targetGridHeightCount;
+    
+    // Note: This will create non-square cells, but ensures full grid coverage
+    // Removed repetitive grid cell logging to reduce log noise
+    
     const cellSize = Math.min(cellWidth, cellHeight);
 
+    // Calculate actual grid dimensions
+    const actualGridWidth = cellWidth * targetGridWidthCount;
+    const actualGridHeight = cellHeight * targetGridHeightCount;
+    
     return {
         cellSize: cellSize,
         cellWidth: cellWidth,
         cellHeight: cellHeight,
-        offsetX: 0,
-        offsetY: 0,
-        actualGridWidth: canvasWidth,
-        actualGridHeight: canvasHeight
+        offsetX: gridOffsetX,
+        offsetY: gridOffsetY,
+        actualGridWidth: actualGridWidth,
+        actualGridHeight: actualGridHeight
     };
   }, []);
 
   const convertCanvasPointToGridCoords = useCallback((
     point: CanvasPoint,
     canvasWidth: number, canvasHeight: number,
-    currentGridDimensions: GridDimensions
+    currentGridDimensions: GridDimensions,
+    cropArea?: CanvasPixelCropArea | null
   ): GridPoint | null => {
-    const layout = calculateGridLayout(canvasWidth, canvasHeight, currentGridDimensions);
+    const layout = calculateGridLayout(canvasWidth, canvasHeight, currentGridDimensions, cropArea);
     if (!layout || !point) return null;
     const { cellWidth, cellHeight, offsetX, offsetY } = layout;
 
@@ -144,9 +167,10 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
     point: CanvasPoint, 
     canvasWidth: number, 
     canvasHeight: number,
-    currentGridDimensions: GridDimensions
+    currentGridDimensions: GridDimensions,
+    cropArea?: CanvasPixelCropArea | null
   ): GridPoint | null => { 
-    const layout = calculateGridLayout(canvasWidth, canvasHeight, currentGridDimensions);
+    const layout = calculateGridLayout(canvasWidth, canvasHeight, currentGridDimensions, cropArea);
     if (!layout || !point) return null;
     
     const { cellWidth, cellHeight, offsetX, offsetY } = layout;
@@ -162,32 +186,41 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
   }, [calculateGridLayout]);
 
 
-  const drawGridOverlay = useCallback((ctx: CanvasRenderingContext2D, canvasW: number, canvasH: number, currentGridDims: GridDimensions) => {
-    const layout = calculateGridLayout(canvasW, canvasH, currentGridDims);
+  const drawGridOverlay = useCallback((ctx: CanvasRenderingContext2D, canvasW: number, canvasH: number, currentGridDims: GridDimensions, cropArea?: CanvasPixelCropArea | null) => {
+    const layout = calculateGridLayout(canvasW, canvasH, currentGridDims, cropArea);
     if (!layout) return;
-    const { cellWidth, cellHeight, offsetX, offsetY } = layout;
+    const { cellWidth, cellHeight, offsetX, offsetY, actualGridWidth, actualGridHeight } = layout;
+    
+    // Grid layout debugging removed for production
 
     ctx.save();
+    // Clip to the crop area if it exists
+    if (cropArea && cropArea.width > 0 && cropArea.height > 0) {
+      ctx.beginPath();
+      ctx.rect(cropArea.x, cropArea.y, cropArea.width, cropArea.height);
+      ctx.clip();
+    }
+    
     ctx.strokeStyle = 'rgba(100, 100, 100, 0.5)'; ctx.lineWidth = 1; ctx.setLineDash([2, 3]);
     for (let i = 0; i <= currentGridDims.width_grids; i++) {
       const x = offsetX + (i * cellWidth);
       ctx.beginPath();
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x, canvasH);
+      ctx.moveTo(x, offsetY);
+      ctx.lineTo(x, offsetY + actualGridHeight);
       ctx.stroke();
     }
     for (let i = 0; i <= currentGridDims.height_grids; i++) {
       const y = offsetY + (i * cellHeight);
       ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(canvasW, y);
+      ctx.moveTo(offsetX, y);
+      ctx.lineTo(offsetX + actualGridWidth, y);
       ctx.stroke();
     }
     ctx.restore();
   }, [calculateGridLayout]);
 
-  const drawStructuralElements = useCallback((ctx: CanvasRenderingContext2D, canvasW: number, canvasH: number, elements: StructuralElement[], currentGridDims: GridDimensions) => {
-    const layout = calculateGridLayout(canvasW, canvasH, currentGridDims);
+  const drawStructuralElements = useCallback((ctx: CanvasRenderingContext2D, canvasW: number, canvasH: number, elements: StructuralElement[], currentGridDims: GridDimensions, cropArea?: CanvasPixelCropArea | null) => {
+    const layout = calculateGridLayout(canvasW, canvasH, currentGridDims, cropArea);
     if (!layout || !elements || elements.length === 0) return;
     const { cellWidth, cellHeight, offsetX, offsetY } = layout;
 
@@ -267,8 +300,8 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
         context.strokeRect(committedCropCanvasRect.x, committedCropCanvasRect.y, committedCropCanvasRect.width, committedCropCanvasRect.height);
         context.restore();
       }
-      if (showGridOverlay) drawGridOverlay(context, newCanvasWidth, newCanvasHeight, gridDimensions);
-      drawStructuralElements(context, newCanvasWidth, newCanvasHeight, structuralElements, gridDimensions);
+      if (showGridOverlay) drawGridOverlay(context, newCanvasWidth, newCanvasHeight, gridDimensions, committedCropCanvasRect);
+      drawStructuralElements(context, newCanvasWidth, newCanvasHeight, structuralElements, gridDimensions, committedCropCanvasRect);
 
       if (liveRectToDraw && liveRectToDraw.width > 0 && liveRectToDraw.height > 0) {
         context.save();
@@ -422,7 +455,18 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
     const { canvasWidth, canvasHeight, page, scale } = pageRenderInfo;
 
     if (structuralElementMode === 'place' && pendingElementType !== 'structural_wall' && structuralElementDrag.isDrawing && structuralElementDrag.currentRect) {
-      const gridLayout = calculateGridLayout(canvasWidth, canvasHeight, gridDimensions);
+      // Get the committed crop area for grid calculation
+      let committedCropCanvasRect: CanvasPixelCropArea | null = null;
+      if (currentCropInPdfPoints && scale > 0) {
+        committedCropCanvasRect = {
+          x: currentCropInPdfPoints.x * scale,
+          y: currentCropInPdfPoints.y * scale,
+          width: currentCropInPdfPoints.width * scale,
+          height: currentCropInPdfPoints.height * scale,
+        };
+      }
+      
+      const gridLayout = calculateGridLayout(canvasWidth, canvasHeight, gridDimensions, committedCropCanvasRect);
       if (gridLayout && structuralElementDrag.currentRect.width > 5 && structuralElementDrag.currentRect.height > 5) { 
         const { cellWidth, cellHeight, offsetX, offsetY } = gridLayout;
         const rect = structuralElementDrag.currentRect;
@@ -431,6 +475,8 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
         const exactGridY = (rect.y - offsetY) / cellHeight;
         const exactGridWidth = rect.width / cellWidth;
         const exactGridHeight = rect.height / cellHeight;
+
+        // Element placement logging removed for production
 
         if (exactGridWidth > 0 && exactGridHeight > 0) {
           onStructuralElementPlace(exactGridX, exactGridY, exactGridWidth, exactGridHeight);
@@ -455,6 +501,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
         const clampedWidth = Math.max(0, Math.min(pdfWidth, originalViewport.width - clampedX));
         const clampedHeight = Math.max(0, Math.min(pdfHeight, originalViewport.height - clampedY));
 
+        
         if (clampedWidth > 0 && clampedHeight > 0) {
           onCropChange({ x: clampedX, y: clampedY, width: clampedWidth, height: clampedHeight });
         } else { onCropChange(null); }

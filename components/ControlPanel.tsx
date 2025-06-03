@@ -7,6 +7,7 @@ import {
   Layers, MapPin, Trash2, GalleryVerticalEnd, PanelTopOpen // PanelTopOpen was for Wall, can be kept or removed if not used by Balcony etc.
 } from 'lucide-react';
 import type { GridDimensions, ZoneDefinition, StructuralElement, StructuralElementType, StructuralElementMode } from '../types';
+// import { logger } from '../utils/logger'; // Removed for production
 
 interface ControlPanelProps {
   onFileChange: (file: File | null) => void;
@@ -50,6 +51,7 @@ interface ControlPanelProps {
   onExportFormatChange: (format: 'grayscale' | 'color') => void;
   hasPhase1Metadata: boolean;
   onDownloadPhase1Json: () => void;
+  onLoadSession: () => void;
   // wallDrawingMode?: 'freehand' | 'grid_snap'; // Deprecated
   // onWallDrawingModeChange?: (mode: 'freehand' | 'grid_snap') => void; // Deprecated
 }
@@ -93,9 +95,10 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   isZoomInDisabled, isZoomOutDisabled, gridDimensions, onGridDimensionsChange, onQuickZoneSetup,
   showGridOverlay, onToggleGridOverlay, majorZones, structuralElements, structuralElementMode,
   pendingElementType, onToggleStructuralMode, onDeleteStructuralElement, setStatusMessage,
-  exportFormat, onExportFormatChange, hasPhase1Metadata, onDownloadPhase1Json,
+  exportFormat, onExportFormatChange, hasPhase1Metadata, onDownloadPhase1Json, onLoadSession,
   // wallDrawingMode, onWallDrawingModeChange // Deprecated
 }) => {
+  // Removed repetitive render logging to reduce log noise
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.files && event.target.files[0]) onFileChange(event.target.files[0]);
     else onFileChange(null);
@@ -135,6 +138,14 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
             <UploadCloud size={iconSize} className="mr-2" /> {pdfLoaded ? "Change PDF" : "Open PDF"}
           </label>
           <input id="pdf-upload" type="file" accept=".pdf" onChange={handleFileSelect} className="hidden" aria-label="PDF file input" />
+          <button 
+            onClick={onLoadSession} 
+            className={`${secondaryButtonClass} whitespace-nowrap`}
+            title="Load saved session"
+          >
+            <Layers size={iconSize} className="mr-2" />
+            Load Session
+          </button>
           {pdfLoaded && (
              <div className="flex items-center space-x-1.5">
               <Building size={iconSize-2} className="text-sky-400 ml-1" />

@@ -161,14 +161,55 @@ export interface Phase1Metadata {
     typical_patterns: {
       [floor: string]: string[];
     };
+    stair_patterns: {
+      vertical_alignment: string;
+      u_turn_benefit: string;
+      size_variation: string;
+    };
+  };
+  grid_module_info: {
+    base_module_mm: number;
+    common_room_grids: {
+      "6_tatami": { width: number; height: number };
+      "8_tatami": { width: number; height: number };
+      "4.5_tatami": { width: number; height: number };
+    };
+    stair_grids: {
+      "u_turn_1f": { width: number; height: number };
+      "u_turn_2f": { width: number; height: number };
+      "straight_all": { width: number; height: number };
+    };
+  };
+  training_optimization: {
+    image_format: string;
+    reason: string;
+    benefits: string[];
   };
 }
 
 // Phase 2: Element placement data
+// 階段タイプの型を追加
+export type StairType = 'straight' | 'u_turn' | 'unknown';
+
+// 階段情報の型を追加
+export interface StairInfo {
+  name: string;
+  type: StairType;
+  grid_position: {
+    x: number;
+    y: number;
+    width?: number;
+    height?: number;
+  };
+  floor: string;
+  alignment_note: string;
+}
+
 export interface Phase2Elements {
   crop_id: string;
   structural_elements: StructuralElement[];
   zones: ZoneDefinition[];
+  stair_info?: StairInfo[];  // 追加
   validation_status: {
     passed: boolean;
     messages: string[];
