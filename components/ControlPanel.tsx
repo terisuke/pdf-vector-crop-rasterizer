@@ -1,17 +1,17 @@
 import {
-    AlertTriangle,
-    ArrowLeftCircle, ArrowRightCircle,
-    Building, CaseSensitive,
-    Download,
-    Eye, EyeOff,
-    GalleryVerticalEnd,
-    Grid3x3, Home,
-    Layers, MapPin,
-    RotateCcw,
-    Settings2,
-    Trash2,
-    UploadCloud,
-    ZoomIn, ZoomOut
+  AlertTriangle,
+  ArrowLeftCircle, ArrowRightCircle,
+  Building, CaseSensitive,
+  Download,
+  Eye, EyeOff,
+  GalleryVerticalEnd,
+  Grid3x3, Home,
+  Layers, MapPin,
+  RotateCcw,
+  Settings2,
+  Trash2,
+  UploadCloud,
+  ZoomIn, ZoomOut
 } from 'lucide-react';
 import React from 'react';
 import type { GridDimensions, StructuralElement, StructuralElementMode, StructuralElementType, ZoneDefinition } from '../types';
