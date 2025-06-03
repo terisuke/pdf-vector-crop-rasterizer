@@ -17,9 +17,15 @@ import type {
   ElementSummary,
   AnnotationMetadata,
   Segment,
-  GridPoint
+  GridPoint,
+  Phase1Metadata,
+  Phase2Elements,
+  StructuralConstraints,
+  FloorRequirements
 } from './types';
 import { Download, AlertCircle } from 'lucide-react';
+import { cropPdfToVector, loadCroppedPdfForRendering } from './utils/pdfCropper';
+import type { CroppedPdfResult } from './utils/pdfCropper';
 
 const workerSrc = `https://esm.sh/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.mjs`;
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrc;
@@ -275,6 +281,15 @@ const App: React.FC = () => {
   // const [wallDrawingMode, setWallDrawingMode] = useState<'freehand' | 'grid_snap'>('grid_snap'); // Wall drawing mode deprecated
   
   const [exportFormat, setExportFormat] = useState<'grayscale' | 'color'>('grayscale'); // Default to grayscale for AI training
+  
+  // Two-phase JSON system states
+  const [cropSessionId, setCropSessionId] = useState<string>('');
+  const [phase1Metadata, setPhase1Metadata] = useState<Phase1Metadata | null>(null);
+  const [currentPhase, setCurrentPhase] = useState<1 | 2>(1);
+  
+  // Cropped PDF states
+  const [croppedPdfResult, setCroppedPdfResult] = useState<CroppedPdfResult | null>(null);
+  const [croppedPdfDoc, setCroppedPdfDoc] = useState<PDFDocumentProxyType | null>(null);
 
 
   const sanitizeForFilename = (name: string): string => {
@@ -345,6 +360,8 @@ const App: React.FC = () => {
   useEffect(() => {
     if (!pdfFile) {
       setPdfDoc(null); setTotalPages(0); setCurrentPageNum(1); setCropArea(null);
+      setCroppedPdfDoc(null); setCroppedPdfResult(null);
+      setCropSessionId(''); setPhase1Metadata(null); setCurrentPhase(1);
       setStatusMessage('Please select a PDF file to begin.');
       setFileName(generateStandardFilename('default_id', floorOptions[0], 'png'));
       setViewZoomLevel(1.0); setCurrentFloorLevel(floorOptions[0]);
@@ -412,22 +429,86 @@ const App: React.FC = () => {
     }
   };
 
-  const handleCropChange = useCallback((newCropArea: PdfPointCropArea | null) => {
+  const handleCropChange = useCallback(async (newCropArea: PdfPointCropArea | null) => {
     setCropArea(newCropArea);
-    if (newCropArea && newCropArea.width > 0 && newCropArea.height > 0) {
+    if (newCropArea && newCropArea.width > 0 && newCropArea.height > 0 && pdfFile && pdfDoc) {
       const autoGridDims = calculateGridDimensionsFromCrop(newCropArea, drawingScaleDenominator);
       setGridDimensions(autoGridDims);
       setMajorZones(calculateRealisticZones(autoGridDims));
-      setStatusMessage(`Crop selected. Auto grid: ${autoGridDims.width_grids}×${autoGridDims.height_grids}. Floor: ${currentFloorLevel}.`);
+      
+      try {
+        // Crop the PDF vector
+        const arrayBuffer = await pdfFile.arrayBuffer();
+        const croppedResult = await cropPdfToVector(arrayBuffer, newCropArea, currentPageNum);
+        setCroppedPdfResult(croppedResult);
+        
+        // Load the cropped PDF for display
+        const croppedArrayBuffer = await loadCroppedPdfForRendering(croppedResult.croppedPdfBlob);
+        const loadingTask = pdfjsLib.getDocument({ data: croppedArrayBuffer });
+        const croppedPdf = await loadingTask.promise;
+        setCroppedPdfDoc(croppedPdf);
+        
+        // Generate session ID based on PDF name
+        const pdfBaseName = sanitizeForFilename(pdfFile.name);
+        const sessionId = `${pdfBaseName}_${currentFloorLevel.toLowerCase()}`;
+        setCropSessionId(sessionId);
+        setCurrentPhase(1);
+        
+        const metadata: Phase1Metadata = {
+          crop_id: sessionId,
+          original_pdf: pdfFile.name,
+          floor: currentFloorLevel,
+          timestamp: new Date().toISOString(),
+          grid_dimensions: autoGridDims,
+          scale_info: {
+            drawing_scale: `1:${drawingScaleDenominator}`,
+            grid_mm: 910,
+            grid_px: calculateGridPx(dpi, drawingScaleDenominator)
+          },
+          structural_constraints: getStructuralConstraints(),
+          floor_requirements: getFloorRequirements(currentFloorLevel),
+          export_config: {
+            image_format: exportFormat,
+            optimization: "diffusion_training",
+            color_depth: exportFormat === 'grayscale' ? "8bit" : "24bit"
+          },
+          crop_bounds_in_original: newCropArea,
+          building_context: {
+            type: "single_family_house",
+            floors_total: 2,
+            current_floor: currentFloorLevel,
+            typical_patterns: {
+              "1F": ["entrance", "stair", "ldk", "bathroom", "optional_bedroom"],
+              "2F": ["stair", "bedrooms", "bathroom", "balcony"]
+            }
+          }
+        };
+        
+        setPhase1Metadata(metadata);
+        
+        // Save to localStorage (no auto-download)
+        localStorage.setItem(`phase1_${sessionId}`, JSON.stringify(metadata));
+        
+        setStatusMessage(`Phase 1: Crop selected. Grid: ${autoGridDims.width_grids}×${autoGridDims.height_grids}. Ready for element placement.`);
+      } catch (error) {
+        console.error('Failed to crop PDF:', error);
+        setError('Failed to crop PDF. Please try again.');
+      }
     } else {
       const defaultGridDims = initialGridDimensions;
       setGridDimensions(defaultGridDims);
       setMajorZones(calculateRealisticZones(defaultGridDims));
+      setCropSessionId('');
+      setPhase1Metadata(null);
+      setCroppedPdfResult(null);
+      setCroppedPdfDoc(null);
+      setCurrentPhase(1);
       if (pdfDoc) {
         setStatusMessage(`Crop cleared. Grid reset to default: ${defaultGridDims.width_grids}×${defaultGridDims.height_grids}.`);
       }
     }
-  }, [calculateGridDimensionsFromCrop, drawingScaleDenominator, currentFloorLevel, pdfDoc, initialGridDimensions]);
+  }, [calculateGridDimensionsFromCrop, drawingScaleDenominator, currentFloorLevel, pdfDoc, pdfFile, 
+      currentPageNum, dpi, exportFormat, sanitizeForFilename]);
 
 
   const handleDpiChange = (newDpi: number) => {
@@ -639,6 +720,83 @@ const App: React.FC = () => {
     if (dataUrl.startsWith('blob:')) URL.revokeObjectURL(dataUrl);
   };
 
+  // Manual download of Phase 1 JSON
+  const handleDownloadPhase1Json = () => {
+    if (!phase1Metadata || !pdfFile) return;
+    
+    const pdfBaseName = sanitizeForFilename(pdfFile.name);
+    const fileName = `plan_${pdfBaseName}_${currentFloorLevel.toLowerCase()}_metadata.json`;
+    const jsonString = JSON.stringify(phase1Metadata, null, 2);
+    const jsonBlob = new Blob([jsonString], { type: 'application/json' });
+    const jsonUrl = URL.createObjectURL(jsonBlob);
+    downloadDataUrl(jsonUrl, fileName);
+    setStatusMessage(`Downloaded Phase 1 metadata: ${fileName}`);
+  };
+
+  // Helper function to get structural constraints
+  const getStructuralConstraints = (): StructuralConstraints => {
+    return {
+      wall_thickness: {
+        exterior_mm: 200,
+        interior_mm: 120,
+        load_bearing_mm: 150
+      },
+      room_constraints: {
+        ldk: {
+          layout: "linear",
+          max_span_mm: 6000,
+          reason: "structural_beam_limitation"
+        }
+      },
+      stair_constraints: {
+        vertical_alignment_note: "Stairs must be positioned at identical grid coordinates across all floors",
+        typical_configurations: {
+          u_turn_1f_small: {
+            "1F": { grid_width: 1, grid_height: 2 },
+            "2F": { grid_width: 2, grid_height: 2 }
+          },
+          u_turn_2f_small: {
+            "1F": { grid_width: 2, grid_height: 2 },
+            "2F": { grid_width: 1, grid_height: 2 }
+          },
+          straight: {
+            "1F": { grid_width: 2, grid_height: 2 },
+            "2F": { grid_width: 2, grid_height: 2 }
+          }
+        }
+      }
+    };
+  };
+
+  // Helper function to get floor requirements
+  const getFloorRequirements = (floor: string): FloorRequirements => {
+    if (floor === "1F") {
+      return {
+        required_elements: ["entrance", "stair"],
+        prohibited_elements: [],
+        notes: {
+          stair_alignment: "Ensure stairs are positioned at identical grid coordinates across all floors"
+        }
+      };
+    } else {
+      return {
+        required_elements: ["stair"],
+        prohibited_elements: ["entrance"],
+        notes: {
+          stair_alignment: "Ensure stairs are positioned at identical grid coordinates across all floors"
+        }
+      };
+    }
+  };
+
+  // Helper function to calculate grid px
+  const calculateGridPx = (dpi: number, scaleDenominator: number): number => {
+    const REAL_WORLD_MODULE_MM = 910;
+    const MM_PER_INCH = 25.4;
+    const gridPxUnrounded = (REAL_WORLD_MODULE_MM / MM_PER_INCH) * (dpi / scaleDenominator);
+    return parseFloat(gridPxUnrounded.toFixed(1));
+  };
+
   const mergeConnectedWallLines = (elements: StructuralElement[]): StructuralElement[] => {
     const wallElements = elements.filter(el => el.type === 'structural_wall' && el.line_start && el.line_end);
     const otherElements = elements.filter(el => el.type !== 'structural_wall' || !el.line_start || !el.line_end);
@@ -710,12 +868,21 @@ const App: React.FC = () => {
     setStatusMessage(`Processing page ${currentPageNum} (Floor: ${currentFloorLevel}) at ${dpi} DPI, Scale 1:${drawingScaleDenominator}...`);
 
     try {
-      const page = await pdfDoc.getPage(currentPageNum);
+      // Use cropped PDF if available, otherwise use original PDF
+      const activePdfDoc = croppedPdfDoc || pdfDoc;
+      const activePageNum = croppedPdfDoc ? 1 : currentPageNum;
+      
+      const page = await activePdfDoc.getPage(activePageNum);
       let effectiveCropPdfPoints: PdfPointCropArea;
       const originalViewport = page.getViewport({ scale: 1 });
 
-      if (cropArea && cropArea.width > 0 && cropArea.height > 0) { effectiveCropPdfPoints = cropArea; }
-      else { effectiveCropPdfPoints = { x: 0, y: 0, width: originalViewport.width, height: originalViewport.height };
+      if (croppedPdfDoc) {
+        // If using cropped PDF, use full page
+        effectiveCropPdfPoints = { x: 0, y: 0, width: originalViewport.width, height: originalViewport.height };
+      } else if (cropArea && cropArea.width > 0 && cropArea.height > 0) { 
+        effectiveCropPdfPoints = cropArea; 
+      } else { 
+        effectiveCropPdfPoints = { x: 0, y: 0, width: originalViewport.width, height: originalViewport.height };
         setStatusMessage(`No crop selected. Processing full page ${currentPageNum} (Floor: ${currentFloorLevel})...`);
       }
 
@@ -783,18 +950,51 @@ const App: React.FC = () => {
         }
       };
 
-      const jsonString = JSON.stringify(layoutMetadata, null, 2);
-      const jsonBlob = new Blob([jsonString], { type: 'application/json' });
-      const jsonFileName = generateStandardFilename(pdfFile.name, currentFloorLevel, 'json');
-      const jsonUrl = URL.createObjectURL(jsonBlob);
-      downloadDataUrl(jsonUrl, jsonFileName);
-      setStatusMessage(`Saved ${currentOutputPngFilename} and ${jsonFileName}. ${validationResult.message}`);
+      // Phase 2: Generate element placement JSON
+      if (cropSessionId && phase1Metadata) {
+        const phase2Elements: Phase2Elements = {
+          crop_id: cropSessionId,
+          structural_elements: nonWallElementsForOutput,
+          zones: majorZones,
+          validation_status: {
+            passed: validationResult.valid,
+            messages: [validationResult.message]
+          },
+          annotation_metadata: {
+            annotator_version: "v2.0_structural_focus",
+            annotation_time: new Date().toISOString(),
+            element_count: elementSummary
+          }
+        };
+        
+        // Save Phase 2 to localStorage
+        localStorage.setItem(`phase2_${cropSessionId}`, JSON.stringify(phase2Elements));
+        
+        // Download Phase 2 JSON
+        const phase2JsonString = JSON.stringify(phase2Elements, null, 2);
+        const phase2JsonBlob = new Blob([phase2JsonString], { type: 'application/json' });
+        const phase2JsonUrl = URL.createObjectURL(phase2JsonBlob);
+        const pdfBaseName = sanitizeForFilename(pdfFile.name);
+        const phase2FileName = `plan_${pdfBaseName}_${currentFloorLevel.toLowerCase()}_elements.json`;
+        downloadDataUrl(phase2JsonUrl, phase2FileName);
+        
+        setCurrentPhase(2);
+        setStatusMessage(`Phase 2: Saved ${currentOutputPngFilename} and element placement JSON. ${validationResult.message}`);
+      } else {
+        // Fallback to original single JSON if no phase 1 metadata
+        const jsonString = JSON.stringify(layoutMetadata, null, 2);
+        const jsonBlob = new Blob([jsonString], { type: 'application/json' });
+        const jsonFileName = generateStandardFilename(pdfFile.name, currentFloorLevel, 'json');
+        const jsonUrl = URL.createObjectURL(jsonBlob);
+        downloadDataUrl(jsonUrl, jsonFileName);
+        setStatusMessage(`Saved ${currentOutputPngFilename} and ${jsonFileName}. ${validationResult.message}`);
+      }
     } catch (err) {
       console.error('Failed to process PDF:', err);
       const message = err instanceof Error ? err.message : String(err);
       setError(`Processing failed: ${message}`); setStatusMessage('Error during processing.');
     } finally { setIsProcessing(false); }
-  }, [pdfDoc, pdfFile, currentPageNum, cropArea, dpi, drawingScaleDenominator, currentFloorLevel, generateStandardFilename, gridDimensions, majorZones, structuralElements, mergeConnectedWallLines, validateStructuralElements]);
+  }, [pdfDoc, pdfFile, currentPageNum, cropArea, dpi, drawingScaleDenominator, currentFloorLevel, generateStandardFilename, gridDimensions, majorZones, structuralElements, mergeConnectedWallLines, validateStructuralElements, exportFormat, cropSessionId, phase1Metadata, downloadDataUrl]);
 
   const handleGlobalKeyDown = useCallback((event: KeyboardEvent) => {
     if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) {
@@ -874,6 +1074,7 @@ const App: React.FC = () => {
         onToggleStructuralMode={handleToggleStructuralMode} onDeleteStructuralElement={handleDeleteStructuralElement}
         setStatusMessage={setStatusMessage}
         exportFormat={exportFormat} onExportFormatChange={setExportFormat}
+        hasPhase1Metadata={!!phase1Metadata} onDownloadPhase1Json={handleDownloadPhase1Json}
         // wallDrawingMode and onWallDrawingModeChange are removed
       />
 
@@ -888,8 +1089,11 @@ const App: React.FC = () => {
       <main className="flex-grow p-4 overflow-hidden flex items-center justify-center">
         {pdfDoc ? (
           <PdfViewer
-            pdfDoc={pdfDoc} pageNum={currentPageNum} onCropChange={handleCropChange}
-            currentCropInPdfPoints={cropArea} viewZoomLevel={viewZoomLevel}
+            pdfDoc={croppedPdfDoc || pdfDoc} 
+            pageNum={croppedPdfDoc ? 1 : currentPageNum} 
+            onCropChange={handleCropChange}
+            currentCropInPdfPoints={croppedPdfDoc ? null : cropArea} 
+            viewZoomLevel={viewZoomLevel}
             showGridOverlay={showGridOverlay} gridDimensions={gridDimensions}
             structuralElements={structuralElements} structuralElementMode={structuralElementMode}
             pendingElementType={pendingElementType}
@@ -908,7 +1112,14 @@ const App: React.FC = () => {
       </main>
 
       <footer className="bg-gray-800 p-3 text-center text-sm text-gray-400">
-        <p>{statusMessage}</p>
+        <div className="flex items-center justify-center space-x-4">
+          <p>{statusMessage}</p>
+          {cropSessionId && (
+            <span className="bg-gray-700 px-2 py-1 rounded text-xs">
+              Phase {currentPhase}/2 | Session: {cropSessionId.slice(-8)}
+            </span>
+          )}
+        </div>
       </footer>
     </div>
   );

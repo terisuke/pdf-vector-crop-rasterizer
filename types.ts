@@ -99,3 +99,89 @@ export interface WallDrawingState {
   currentEnd: PointCoordinate | null;
   lastClickTime: number;
 }
+
+// Phase 1: Metadata after crop selection
+export interface StructuralConstraints {
+  wall_thickness: {
+    exterior_mm: number;
+    interior_mm: number;
+    load_bearing_mm: number;
+  };
+  room_constraints: {
+    ldk: {
+      layout: string;
+      max_span_mm: number;
+      reason: string;
+    };
+    [key: string]: any;
+  };
+  stair_constraints: {
+    vertical_alignment_note: string;
+    typical_configurations: {
+      [key: string]: {
+        "1F": { grid_width: number; grid_height: number };
+        "2F": { grid_width: number; grid_height: number };
+      };
+    };
+  };
+}
+
+export interface FloorRequirements {
+  required_elements: string[];
+  prohibited_elements: string[];
+  notes: {
+    stair_alignment: string;
+    [key: string]: string;
+  };
+}
+
+export interface Phase1Metadata {
+  crop_id: string;
+  original_pdf: string;
+  floor: string;
+  timestamp: string;
+  grid_dimensions: GridDimensions;
+  scale_info: {
+    drawing_scale: string;
+    grid_mm: number;
+    grid_px: number;
+  };
+  structural_constraints: StructuralConstraints;
+  floor_requirements: FloorRequirements;
+  export_config: {
+    image_format: "grayscale" | "color";
+    optimization: string;
+    color_depth: string;
+  };
+  crop_bounds_in_original: PdfPointCropArea;
+  building_context: {
+    type: string;
+    floors_total: number;
+    current_floor: string;
+    typical_patterns: {
+      [floor: string]: string[];
+    };
+  };
+}
+
+// Phase 2: Element placement data
+export interface Phase2Elements {
+  crop_id: string;
+  structural_elements: StructuralElement[];
+  zones: ZoneDefinition[];
+  validation_status: {
+    passed: boolean;
+    messages: string[];
+  };
+  annotation_metadata: {
+    annotator_version: string;
+    annotation_time: string;
+    element_count: ElementSummary;
+  };
+}
+
+export interface CompleteLayoutData extends Phase1Metadata {
+  elements?: Phase2Elements;
+  phase: 1 | 2;
+  completed_at?: string;
+}
