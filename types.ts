@@ -1,4 +1,3 @@
-
 import type { PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist';
 
 export interface PdfPointCropArea {
@@ -59,6 +58,15 @@ export interface AnnotationMetadata {
   drawing_scale: string;
 }
 
+export interface ExportSettings {
+  format: 'grayscale' | 'color';
+  optimized_for?: string;
+  color_space?: string;
+  image_format: 'grayscale' | 'color';
+  optimization: string;
+  color_depth: string;
+}
+
 export interface LayoutMetadata {
   grid_px: number;
   grid_mm: number;
@@ -69,6 +77,7 @@ export interface LayoutMetadata {
   total_approximate_area?: number; // in grid units or square meters based on grid_mm
   element_summary?: ElementSummary;
   annotation_metadata?: AnnotationMetadata;
+  export_settings?: ExportSettings;
 }
 
 export type StructuralElementMode = 'place' | 'edit' | 'none';
@@ -91,4 +100,127 @@ export interface WallDrawingState {
   currentStart: PointCoordinate | null;
   currentEnd: PointCoordinate | null;
   lastClickTime: number;
+}
+
+// Phase 1: Metadata after crop selection
+export interface StructuralConstraints {
+  wall_thickness: {
+    exterior_mm: number;
+    interior_mm: number;
+    load_bearing_mm: number;
+  };
+  room_constraints: {
+    ldk: {
+      layout: string;
+      max_span_mm: number;
+      reason: string;
+    };
+    [key: string]: any;
+  };
+  stair_constraints: {
+    vertical_alignment_note: string;
+    typical_configurations: {
+      [key: string]: {
+        "1F": { grid_width: number; grid_height: number };
+        "2F": { grid_width: number; grid_height: number };
+      };
+    };
+  };
+}
+
+export interface FloorRequirements {
+  required_elements: string[];
+  prohibited_elements: string[];
+  notes: {
+    stair_alignment: string;
+    [key: string]: string;
+  };
+}
+
+export interface Phase1Metadata {
+  crop_id: string;
+  original_pdf: string;
+  floor: string;
+  timestamp: string;
+  grid_dimensions: GridDimensions;
+  scale_info: {
+    drawing_scale: string;
+    grid_mm: number;
+    grid_px: number;
+  };
+  structural_constraints: StructuralConstraints;
+  floor_requirements: FloorRequirements;
+  export_config: ExportSettings;
+  crop_bounds_in_original: PdfPointCropArea;
+  building_context: {
+    type: string;
+    floors_total: number;
+    current_floor: string;
+    typical_patterns: {
+      [floor: string]: string[];
+    };
+    stair_patterns: {
+      vertical_alignment: string;
+      u_turn_benefit: string;
+      size_variation: string;
+    };
+  };
+  grid_module_info: {
+    base_module_mm: number;
+    common_room_grids: {
+      "6_tatami": { width: number; height: number };
+      "8_tatami": { width: number; height: number };
+      "4.5_tatami": { width: number; height: number };
+    };
+    stair_grids: {
+      "u_turn_1f": { width: number; height: number };
+      "u_turn_2f": { width: number; height: number };
+      "straight_all": { width: number; height: number };
+    };
+  };
+  training_optimization: {
+    image_format: string;
+    reason: string;
+    benefits: string[];
+  };
+}
+
+// Phase 2: Element placement data
+// 階段タイプの型を追加
+export type StairType = 'straight' | 'u_turn' | 'unknown';
+
+// 階段情報の型を追加
+export interface StairInfo {
+  name: string;
+  type: StairType;
+  grid_position: {
+    x: number;
+    y: number;
+    width?: number;
+    height?: number;
+  };
+  floor: string;
+  alignment_note: string;
+}
+
+export interface Phase2Elements {
+  crop_id: string;
+  structural_elements: StructuralElement[];
+  zones: ZoneDefinition[];
+  stair_info?: StairInfo[];  // 追加
+  validation_status: {
+    passed: boolean;
+    messages: string[];
+  };
+  annotation_metadata: {
+    annotator_version: string;
+    annotation_time: string;
+    element_count: ElementSummary;
+  };
+}
+
+export interface CompleteLayoutData extends Phase1Metadata {
+  elements?: Phase2Elements;
+  phase: 1 | 2;
+  completed_at?: string;
 }

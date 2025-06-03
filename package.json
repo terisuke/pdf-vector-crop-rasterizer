@@ -9,14 +9,17 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "react": "^19.1.0",
-    "react-dom": "^19.1.0",
-    "pdfjs-dist": "^4.4.0",
     "luc": "^0.3.1",
-    "lucide-react": "^0.511.0"
+    "lucide-react": "^0.511.0",
+    "pdf-lib": "^1.17.1",
+    "pdfjs-dist": "^4.4.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",
+    "@types/react": "^19.1.6",
+    "@types/react-dom": "^19.1.5",
     "typescript": "~5.7.2",
     "vite": "^6.2.0"
   }
