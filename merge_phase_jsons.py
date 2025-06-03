@@ -20,7 +20,14 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 import argparse
 from datetime import datetime
+import logging
 
+# ロギング設定
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
 
 def find_json_pairs(directory: Path) -> List[Tuple[Path, Path]]:
     """
@@ -238,10 +245,10 @@ def main():
     successful_merges = 0
     for phase1_path, phase2_path in pairs:
         try:
-            print(f"\nMerging: {phase1_path.name} + {phase2_path.name}")
+            logging.info(f"Merging: {phase1_path.name} + {phase2_path.name}")
             
             if args.dry_run:
-                print("  [DRY RUN] Would merge these files")
+                logging.info("  [DRY RUN] Would merge these files")
                 continue
             
             # JSONファイルを統合
@@ -250,7 +257,7 @@ def main():
             # プロンプトを追加（オプション）
             if args.add_prompts:
                 integrated_data['generated_prompt'] = generate_training_prompt(integrated_data)
-                print(f"  Generated prompt: {integrated_data['generated_prompt'][:50]}...")
+                logging.info(f"  Generated prompt: {integrated_data['generated_prompt'][:50]}...")
             
             # 出力ファイル名を決定
             base_name = phase1_path.stem.replace('_metadata', '')
@@ -260,8 +267,17 @@ def main():
             save_integrated_json(integrated_data, output_path)
             successful_merges += 1
             
+        except FileNotFoundError as fnf_err:
+            logging.error(f"ファイルが見つかりません: {fnf_err.filename}")
+            continue
+        except json.JSONDecodeError as json_err:
+            logging.error(f"JSONのパースに失敗しました: {json_err.msg} (line {json_err.lineno}, col {json_err.colno}) in {json_err.doc}")
+            continue
+        except KeyError as key_err:
+            logging.error(f"必要なキーが見つかりません: {key_err}")
+            continue
         except Exception as e:
-            print(f"  Error merging files: {e}")
+            logging.exception(f"予期しないエラー: {e}")
             continue
     
     print(f"\nSuccessfully merged {successful_merges} out of {len(pairs)} pairs")
