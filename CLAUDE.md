@@ -48,9 +48,15 @@ This is a React-based PDF processing application that allows users to:
    - Phase 2: Element placement and final export
 6. **Session Management**: LocalStorage-based persistence of work sessions
 
-### Critical Bug Fix (June 2025)
+### Recent Updates (June 2025)
 
-**Issue**: Grid coordinates were calculated based on the full PDF canvas instead of the cropped area, leading to incorrect element positioning in exported JSON files.
+**Integrated JSON Export for Diffusion Training**:
+- New optional feature to export Phase1+Phase2 data in a single JSON file
+- Includes all metadata necessary for Diffusion model training (grid dimensions, scale info, floor constraints)
+- Checkbox in Control Panel to enable/disable (default: ON)
+- Floor-aware room count estimation (1F: public spaces, 2F: private spaces)
+
+**Critical Bug Fix**: Grid coordinates were calculated based on the full PDF canvas instead of the cropped area, leading to incorrect element positioning in exported JSON files.
 
 **Solution**: Modified coordinate calculation system in PdfViewer.tsx:
 - `calculateGridLayout()` now accepts `cropArea` parameter
@@ -79,11 +85,11 @@ The application uses TypeScript with strict type checking. Key types are defined
 - **Coordinate precision**: Elements positioned with 0.1 grid unit accuracy within cropped area
 - **Session management**: Work sessions auto-saved to localStorage with format `{document_name}_{floor}`
 
-### 2-Phase JSON Output System
+### JSON Output System
 
 **Phase 1 (Crop Metadata)**:
 - Generated when crop area is selected
-- Contains grid dimensions, scale info, crop bounds
+- Contains grid dimensions, scale info, crop bounds, building context
 - Saved to localStorage as `phase1_{sessionId}`
 - File format: `plan_{document_id}_{floor}_metadata.json`
 
@@ -92,6 +98,12 @@ The application uses TypeScript with strict type checking. Key types are defined
 - Contains structural elements, validation status
 - Saved to localStorage as `phase2_{sessionId}`
 - File format: `plan_{document_id}_{floor}_elements.json`
+
+**Integrated JSON (Optional, Default ON)**:
+- Combines Phase 1 + Phase 2 data for Diffusion model training
+- Includes training hints with floor-aware room estimation
+- File format: `plan_{document_id}_{floor}_integrated.json`
+- Controlled via checkbox in Control Panel when Phase 1 metadata exists
 
 ### Coordinate System Architecture
 
