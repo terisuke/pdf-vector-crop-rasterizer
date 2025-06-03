@@ -275,6 +275,7 @@ const App: React.FC = () => {
   const [cropSessionId, setCropSessionId] = useState<string>('');
   const [phase1Metadata, setPhase1Metadata] = useState<Phase1Metadata | null>(null);
   const [currentPhase, setCurrentPhase] = useState<1 | 2>(1);
+  const [exportIntegratedJson, setExportIntegratedJson] = useState<boolean>(true); // デフォルトでON
   
   
   // Session management states
@@ -471,8 +472,8 @@ const App: React.FC = () => {
             floors_total: 2,
             current_floor: currentFloorLevel,
             typical_patterns: {
-              "1F": ["entrance", "stair", "ldk", "bathroom", "optional_bedroom"],
-              "2F": ["stair", "bedrooms", "bathroom", "balcony"]
+              "1F": ["entrance_area", "stair", "public_living_space", "wet_areas", "storage_zones"],
+              "2F": ["stair", "private_sleeping_areas", "work_space", "utility_area", "balcony"]
             },
             stair_patterns: {
               vertical_alignment: "critical",
@@ -1117,8 +1118,82 @@ const App: React.FC = () => {
         const phase2FileName = `plan_${pdfBaseName}_${currentFloorLevel.toLowerCase()}_elements.json`;
         downloadDataUrl(phase2JsonUrl, phase2FileName);
         
+        // 統合JSONの出力（新機能）
+        if (exportIntegratedJson) {
+          // Phase 1とPhase 2のデータを統合
+          const integratedData = {
+            // === メタデータセクション (Phase 1から) ===
+            crop_id: phase1Metadata.crop_id,
+            original_pdf: phase1Metadata.original_pdf,
+            floor: phase1Metadata.floor,
+            
+            // グリッドとスケール情報（学習に必須）
+            grid_dimensions: phase1Metadata.grid_dimensions,
+            scale_info: phase1Metadata.scale_info,
+            
+            // 建物コンテキスト
+            building_context: phase1Metadata.building_context,
+            grid_module_info: phase1Metadata.grid_module_info,
+            
+            // 切り抜き情報
+            crop_bounds_in_original: phase1Metadata.crop_bounds_in_original,
+            
+            // === 要素配置セクション (Phase 2から) ===
+            structural_elements: phase2Elements.structural_elements,
+            zones: phase2Elements.zones,
+            stair_info: phase2Elements.stair_info,
+            
+            // === 統合メタデータ ===
+            element_summary: elementSummary,
+            validation_status: phase2Elements.validation_status,
+            
+            // タイムスタンプ
+            timestamps: {
+              phase1_created: phase1Metadata.timestamp,
+              phase2_created: phase2Elements.annotation_metadata.annotation_time,
+              integrated_created: new Date().toISOString()
+            },
+            
+            // バージョン情報
+            metadata_version: "integrated_v1.0",
+            annotation_metadata: {
+              ...phase2Elements.annotation_metadata,
+              floor_type: currentFloorLevel,
+              grid_resolution: `${phase1Metadata.grid_dimensions.width_grids}x${phase1Metadata.grid_dimensions.height_grids}`,
+              drawing_scale: phase1Metadata.scale_info.drawing_scale
+            },
+            
+            // 学習用の追加情報
+            training_hints: {
+              total_area_grids: phase1Metadata.grid_dimensions.width_grids * phase1Metadata.grid_dimensions.height_grids,
+              room_count: calculateRoomCount(phase2Elements.structural_elements, phase1Metadata.floor),
+              has_entrance: phase2Elements.structural_elements.some(el => el.type === 'entrance'),
+              has_stair: phase2Elements.structural_elements.some(el => el.type === 'stair'),
+              has_balcony: phase2Elements.structural_elements.some(el => el.type === 'balcony'),
+              floor_constraints: getFloorRequirements(phase1Metadata.floor)
+            }
+          };
+          
+          // 統合JSONのダウンロード
+          const integratedJsonString = JSON.stringify(integratedData, null, 2);
+          const integratedJsonBlob = new Blob([integratedJsonString], { type: 'application/json' });
+          const integratedJsonUrl = URL.createObjectURL(integratedJsonBlob);
+          const integratedFileName = `plan_${pdfBaseName}_${currentFloorLevel.toLowerCase()}_integrated.json`;
+          downloadDataUrl(integratedJsonUrl, integratedFileName);
+          
+          // LocalStorageにも保存（オプション）
+          localStorage.setItem(`integrated_${cropSessionId}`, JSON.stringify(integratedData));
+          
+          setStatusMessage(
+            `Phase 2: Saved ${currentOutputPngFilename}, element JSON, and integrated training JSON. ${validationResult.message}`
+          );
+        } else {
+          setStatusMessage(
+            `Phase 2: Saved ${currentOutputPngFilename} and element placement JSON. ${validationResult.message}`
+          );
+        }
+        
         setCurrentPhase(2);
-        setStatusMessage(`Phase 2: Saved ${currentOutputPngFilename} and element placement JSON. ${validationResult.message}`);
       } else {
         // Fallback to original single JSON if no phase 1 metadata
         const jsonString = JSON.stringify(layoutMetadata, null, 2);
@@ -1238,6 +1313,8 @@ const App: React.FC = () => {
         exportFormat={exportFormat} onExportFormatChange={setExportFormat}
         hasPhase1Metadata={!!phase1Metadata} onDownloadPhase1Json={handleDownloadPhase1Json}
         onLoadSession={handleLoadSession}
+        exportIntegratedJson={exportIntegratedJson}
+        onExportIntegratedJsonChange={setExportIntegratedJson}
         // wallDrawingMode and onWallDrawingModeChange are removed
       />
 
@@ -1298,6 +1375,27 @@ const App: React.FC = () => {
       />
     </div>
   );
+};
+
+const calculateRoomCount = (elements: StructuralElement[], floor: string): number => {
+  // 階数に応じた部屋数推定
+  const balconyCount = elements.filter(el => el.type === 'balcony').length;
+  
+  if (floor === '1F') {
+    // 1階: LDK + 水回り + オプションの個室
+    const hasEntrance = elements.some(el => el.type === 'entrance');
+    const publicSpaces = 1; // LDK
+    const wetAreas = 1; // 浴室・洗面
+    const optionalRooms = hasEntrance ? 0.5 : 0; // 和室や多目的室の可能性
+    
+    return Math.ceil(publicSpaces + wetAreas + optionalRooms);
+  } else {
+    // 2階以上: 寝室中心 + トイレ
+    const bedroomEstimate = Math.max(2, Math.floor(balconyCount * 1.5)); // 最低2部屋
+    const utilitySpaces = 0.5; // トイレ・洗面等
+    
+    return Math.ceil(bedroomEstimate + utilitySpaces);
+  }
 };
 
 export default App;
