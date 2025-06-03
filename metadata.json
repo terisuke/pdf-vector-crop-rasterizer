@@ -1,0 +1,6 @@
+{
+  "name": "PDF Vector Crop & Rasterizer",
+  "description": "A tool to visually select an area of a PDF page, crop it, and convert it to a high-DPI raster image (PNG). Supports multi-page PDFs, page navigation, and custom DPI settings.",
+  "requestFramePermissions": [],
+  "prompt": ""
+}
