@@ -60,6 +60,41 @@ npm run preview  # ビルド結果のプレビュー
 npm run lint     # TypeScriptの型チェック
 ```
 
+## デプロイメント
+
+### Vercel（推奨）
+
+1. **Vercelアカウントの準備**
+   - [Vercel](https://vercel.com)でアカウントを作成
+   - GitHubリポジトリと連携
+
+2. **環境変数の設定**
+   - Vercelダッシュボードの Settings > Environment Variables で設定：
+   ```
+   GEMINI_API_KEY=your_api_key_here
+   ```
+
+3. **デプロイ**
+   ```bash
+   npm run build  # ローカルでビルドテスト
+   ```
+   - GitHubにプッシュすると自動デプロイ
+   - または`vercel`コマンドでマニュアルデプロイ
+
+### GitHub Pages（代替案）
+
+1. **ビルド設定**
+   - `package.json`にhomepageフィールドを追加
+   - `vite.config.ts`でbase pathを設定
+
+2. **デプロイ**
+   ```bash
+   npm run build
+   # distフォルダをgh-pagesブランチにプッシュ
+   ```
+
+注：GitHub Pagesでは環境変数の管理が制限されるため、Vercelを推奨します。
+
 ## 使用方法
 
 ### 基本的なワークフロー
