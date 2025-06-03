@@ -1,7 +1,8 @@
 import fs from 'fs';
+import multer from 'multer';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import multer from 'multer';
+import { v4 as uuidv4 } from 'uuid';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -26,14 +27,35 @@ export default function handler(req, res) {
         return res.status(400).json({ error: 'No file provided' });
       }
 
-      const filePath = path.join(projectRoot, file.originalname);
-      fs.writeFileSync(filePath, file.buffer);
-      
-      console.log(`✅ Saved file: ${filePath}`);
-      res.status(200).json({ 
-        success: true, 
-        message: `File saved: ${file.originalname}`,
-        path: filePath 
+      // ファイルバリデーション
+      const allowedMimeTypes = ['application/pdf', 'image/png'];
+      const maxFileSize = 10 * 1024 * 1024; // 10MB
+      if (!allowedMimeTypes.includes(file.mimetype)) {
+        return res.status(400).json({ error: 'Invalid file type. Only PDF and PNG are allowed.' });
+      }
+      if (file.size > maxFileSize) {
+        return res.status(400).json({ error: 'File size exceeds 10MB limit.' });
+      }
+
+      // ファイル名サニタイズ＆一意化
+      const uploadsDir = path.join(projectRoot, 'uploads');
+      if (!fs.existsSync(uploadsDir)) {
+        fs.mkdirSync(uploadsDir, { recursive: true });
+      }
+      const ext = path.extname(file.originalname).replace(/[^.a-zA-Z0-9]/g, '');
+      const safeFilename = uuidv4() + ext;
+      const filePath = path.join(uploadsDir, safeFilename);
+      fs.writeFile(filePath, file.buffer, (writeErr) => {
+        if (writeErr) {
+          console.error('Save file error:', writeErr);
+          return res.status(500).json({ error: 'Failed to save file' });
+        }
+        console.log(`✅ Saved file: ${filePath}`);
+        res.status(200).json({ 
+          success: true, 
+          message: `File saved: ${safeFilename}`,
+          path: filePath 
+        });
       });
     } catch (error) {
       console.error('Save file error:', error);

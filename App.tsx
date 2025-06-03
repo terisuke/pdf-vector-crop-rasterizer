@@ -1,34 +1,33 @@
-
-import React, { useState, useEffect, useCallback } from 'react';
-import * as pdfjsLib from 'pdfjs-dist';
+import { AlertCircle, Download } from 'lucide-react';
 import type { PDFPageProxy } from 'pdfjs-dist';
+import * as pdfjsLib from 'pdfjs-dist';
+import React, { useCallback, useEffect, useState } from 'react';
 import { ControlPanel } from './components/ControlPanel';
 import { PdfViewer } from './components/PdfViewer';
 import { SessionModal } from './components/SessionModal';
 import type {
-  PdfPointCropArea,
-  PDFDocumentProxy as PDFDocumentProxyType, // Renamed to avoid conflict
-  GridDimensions,
-  ZoneDefinition,
-  StructuralElement,
-  LayoutMetadata,
-  StructuralElementType,
-  StructuralElementMode,
-  ElementSummary,
   AnnotationMetadata,
-  Segment,
+  ElementSummary,
+  FloorRequirements, // Renamed to avoid conflict
+  GridDimensions,
   GridPoint,
+  LayoutMetadata,
+  PDFDocumentProxy as PDFDocumentProxyType,
+  PdfPointCropArea,
   Phase1Metadata,
   Phase2Elements,
-  StructuralConstraints,
-  FloorRequirements,
+  Segment,
+  StairInfo,
   StairType,
-  StairInfo
+  StructuralConstraints,
+  StructuralElement,
+  StructuralElementMode,
+  StructuralElementType,
+  ZoneDefinition
 } from './types';
-import { Download, AlertCircle } from 'lucide-react';
+import type { CroppedPdfResult } from './utils/pdfCropper';
 import { cropPdfToVector, loadCroppedPdfForRendering } from './utils/pdfCropper';
 import { cropPdfToVectorSimple } from './utils/pdfCropperSimple';
-import type { CroppedPdfResult } from './utils/pdfCropper';
 // import { logger } from './utils/logger'; // Removed for production
 
 const workerSrc = `https://esm.sh/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.mjs`;
@@ -459,9 +458,12 @@ const App: React.FC = () => {
           structural_constraints: getStructuralConstraints(),
           floor_requirements: getFloorRequirements(currentFloorLevel),
           export_config: {
+            format: exportFormat,
             image_format: exportFormat,
             optimization: "diffusion_training",
-            color_depth: exportFormat === 'grayscale' ? "8bit" : "24bit"
+            color_depth: exportFormat === 'grayscale' ? "8bit" : "24bit",
+            optimized_for: "diffusion_training",
+            color_space: exportFormat === 'grayscale' ? 'grayscale_8bit' : 'rgb_24bit'
           },
           crop_bounds_in_original: newCropArea,
           building_context: {
@@ -903,6 +905,12 @@ const App: React.FC = () => {
         setCurrentPhase(2);
       } else {
         setCurrentPhase(1);
+        // Phase 2がない場合、majorZonesを初期化
+        if ((metadata as any).zones && Array.isArray((metadata as any).zones)) {
+          setMajorZones((metadata as any).zones);
+        } else {
+          setMajorZones(calculateRealisticZones(metadata.grid_dimensions));
+        }
       }
       
       setStatusMessage(`Session loaded: ${sessionId}`);
@@ -1072,6 +1080,9 @@ const App: React.FC = () => {
         annotation_metadata: annotationMetadata,
         export_settings: {
           format: exportFormat,
+          image_format: exportFormat,
+          optimization: 'diffusion_training',
+          color_depth: exportFormat === 'grayscale' ? '8bit' : '24bit',
           optimized_for: 'diffusion_training',
           color_space: exportFormat === 'grayscale' ? 'grayscale_8bit' : 'rgb_24bit'
         }

@@ -1,4 +1,4 @@
-import { PDFDocument, PDFPage, rgb } from 'pdf-lib';
+import { PDFDocument } from 'pdf-lib';
 import type { PdfPointCropArea } from '../types';
 
 export interface CroppedPdfResult {
@@ -37,6 +37,16 @@ export async function cropPdfToVector(
   // Get the page to crop (convert to 0-indexed)
   const pageToCrop = pages[pageNumber - 1];
   const originalMediaBox = pageToCrop.getMediaBox();
+  
+  // --- cropBoundsバリデーション ---
+  if (cropBounds.width <= 0 || cropBounds.height <= 0) {
+    throw new Error(`Invalid crop size: width and height must be > 0. (width: ${cropBounds.width}, height: ${cropBounds.height})`);
+  }
+  if (cropBounds.x < 0 || cropBounds.y < 0 ||
+      cropBounds.x + cropBounds.width > originalMediaBox.width ||
+      cropBounds.y + cropBounds.height > originalMediaBox.height) {
+    throw new Error(`Crop area is out of page bounds. Page size: ${originalMediaBox.width}x${originalMediaBox.height}, crop: x=${cropBounds.x}, y=${cropBounds.y}, w=${cropBounds.width}, h=${cropBounds.height}`);
+  }
   
   // Store original dimensions
   const originalDimensions = {
@@ -88,28 +98,10 @@ export async function cropPdfToVector(
   // MediaBoxを新しい座標系に設定（原点を0,0にリセット）
   copiedPage.setMediaBox(0, 0, cropBox.width, cropBox.height);
   
-  // コンテンツを新しい原点に移動
-  // pdf-libでは変換行列を使用してコンテンツを移動
-  const transformMatrix = [1, 0, 0, 1, -x1, -y1];
-  
   // ページの変換行列を適用
   try {
-    // pdf-libでページコンテンツの変換を試行
-    copiedPage.node.set('UserUnit', 1);
-    
-    // 変換行列をページに適用
-    const contentStreams = copiedPage.node.Contents();
-    if (contentStreams) {
-      // 既存のコンテンツの前に変換行列を追加
-      const transformString = `q ${transformMatrix.join(' ')} cm\n`;
-      const closeString = '\nQ';
-      
-      const existingContent = Array.isArray(contentStreams) ? contentStreams : [contentStreams];
-      const newContentStream = croppedPdf.context.stream(transformString);
-      const closeContentStream = croppedPdf.context.stream(closeString);
-      
-      copiedPage.node.set('Contents', [newContentStream, ...existingContent, closeContentStream]);
-    }
+    // 高レベルAPIでコンテンツを移動
+    copiedPage.translateContent(-x1, -y1);
   } catch (error) {
     console.warn('Could not apply content transformation, using CropBox only:', error);
     // 変換が失敗した場合は、CropBoxのみを使用
@@ -122,7 +114,9 @@ export async function cropPdfToVector(
   
   // Save the cropped PDF
   const croppedPdfBytes = await croppedPdf.save();
-  const croppedPdfBlob = new Blob([croppedPdfBytes], { type: 'application/pdf' });
+  // ArrayBufferへ明示的にコピー
+  const ab = new Uint8Array(croppedPdfBytes).buffer;
+  const croppedPdfBlob = new Blob([ab], { type: 'application/pdf' });
   
   return {
     croppedPdfBytes,

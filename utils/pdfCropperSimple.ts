@@ -49,20 +49,17 @@ export async function cropPdfToVectorSimple(
     calculatedCropBox: cropBox
   });
   
-  // Set CropBox using correct coordinates (x1, y1, x2, y2)
-  const x1 = cropBox.x;
-  const y1 = cropBox.y;
-  const x2 = cropBox.x + cropBox.width;
-  const y2 = cropBox.y + cropBox.height;
-  
-  copiedPage.setCropBox(x1, y1, x2, y2);
+  // Set CropBox using correct coordinates (x, y, width, height)
+  copiedPage.setCropBox(cropBox.x, cropBox.y, cropBox.width, cropBox.height);
   
   // Add the cropped page to the new PDF
   croppedPdf.addPage(copiedPage);
   
   // Save the cropped PDF
   const croppedPdfBytes = await croppedPdf.save();
-  const croppedPdfBlob = new Blob([croppedPdfBytes], { type: 'application/pdf' });
+  // ArrayBufferへ明示的にコピー
+  const ab = new Uint8Array(croppedPdfBytes).buffer;
+  const croppedPdfBlob = new Blob([ab], { type: 'application/pdf' });
   
   return {
     croppedPdfBytes,

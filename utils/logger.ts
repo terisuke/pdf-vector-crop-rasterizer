@@ -16,17 +16,33 @@ class CustomLogger {
   }
 
   private addLog(level: 'log' | 'warn' | 'error', message: string, data?: any) {
+    let safeDataStr: string | undefined = undefined;
+    if (data !== undefined) {
+      try {
+        safeDataStr = JSON.stringify(data, null, 2);
+      } catch (e) {
+        safeDataStr = '[Circular or unserializable object]';
+      }
+    }
     const logEntry: LogEntry = {
       timestamp: new Date().toISOString(),
       level,
       message,
-      data: data ? JSON.stringify(data, null, 2) : undefined
+      data: safeDataStr
     };
-    
     this.logs.push(logEntry);
     
     // Also log to browser console
-    const fullMessage = `${message}${data ? ' ' + JSON.stringify(data) : ''}`;
+    let fullMessage = message;
+    if (data !== undefined) {
+      let consoleDataStr: string;
+      try {
+        consoleDataStr = JSON.stringify(data);
+      } catch (e) {
+        consoleDataStr = '[Circular or unserializable object]';
+      }
+      fullMessage += ' ' + consoleDataStr;
+    }
     switch (level) {
       case 'log':
         console.log(fullMessage);

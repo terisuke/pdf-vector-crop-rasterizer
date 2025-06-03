@@ -1,12 +1,20 @@
-
-import React from 'react';
 import {
-  UploadCloud, ArrowLeftCircle, ArrowRightCircle, Settings2, Download,
-  ZoomIn, ZoomOut, RotateCcw, Building, CaseSensitive,
-  Grid3x3, Home, Eye, EyeOff, AlertTriangle,
-  Layers, MapPin, Trash2, GalleryVerticalEnd, PanelTopOpen // PanelTopOpen was for Wall, can be kept or removed if not used by Balcony etc.
+    AlertTriangle,
+    ArrowLeftCircle, ArrowRightCircle,
+    Building, CaseSensitive,
+    Download,
+    Eye, EyeOff,
+    GalleryVerticalEnd,
+    Grid3x3, Home,
+    Layers, MapPin,
+    RotateCcw,
+    Settings2,
+    Trash2,
+    UploadCloud,
+    ZoomIn, ZoomOut
 } from 'lucide-react';
-import type { GridDimensions, ZoneDefinition, StructuralElement, StructuralElementType, StructuralElementMode } from '../types';
+import React from 'react';
+import type { GridDimensions, StructuralElement, StructuralElementMode, StructuralElementType, ZoneDefinition } from '../types';
 // import { logger } from '../utils/logger'; // Removed for production
 
 interface ControlPanelProps {
@@ -94,7 +102,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   floorOptions, currentFloor, onFloorChange, viewZoomLevel, onZoomIn, onZoomOut, onZoomReset,
   isZoomInDisabled, isZoomOutDisabled, gridDimensions, onGridDimensionsChange, onQuickZoneSetup,
   showGridOverlay, onToggleGridOverlay, majorZones, structuralElements, structuralElementMode,
-  pendingElementType, onToggleStructuralMode, onDeleteStructuralElement, setStatusMessage,
+  pendingElementType, onToggleStructuralMode, onDeleteStructuralElement, 
   exportFormat, onExportFormatChange, hasPhase1Metadata, onDownloadPhase1Json, onLoadSession,
   // wallDrawingMode, onWallDrawingModeChange // Deprecated
 }) => {
@@ -296,6 +304,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                 } transition-colors`}
                 disabled={!pdfLoaded}
                 title="Recommended for AI training"
+                aria-pressed={exportFormat === 'grayscale'}
               >
                 Grayscale
               </button>
@@ -307,6 +316,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                     : 'bg-gray-700 text-gray-300 border-gray-600 hover:bg-gray-600'
                 } transition-colors`}
                 disabled={!pdfLoaded}
+                aria-pressed={exportFormat === 'color'}
               >
                 Color
               </button>

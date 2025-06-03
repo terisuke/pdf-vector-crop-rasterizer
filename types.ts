@@ -1,4 +1,3 @@
-
 import type { PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist';
 
 export interface PdfPointCropArea {
@@ -63,6 +62,9 @@ export interface ExportSettings {
   format: 'grayscale' | 'color';
   optimized_for?: string;
   color_space?: string;
+  image_format: 'grayscale' | 'color';
+  optimization: string;
+  color_depth: string;
 }
 
 export interface LayoutMetadata {
@@ -148,11 +150,7 @@ export interface Phase1Metadata {
   };
   structural_constraints: StructuralConstraints;
   floor_requirements: FloorRequirements;
-  export_config: {
-    image_format: "grayscale" | "color";
-    optimization: string;
-    color_depth: string;
-  };
+  export_config: ExportSettings;
   crop_bounds_in_original: PdfPointCropArea;
   building_context: {
     type: string;
