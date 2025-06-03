@@ -68,6 +68,29 @@ const roundGridCoordinate = (value: number): number => {
   return Math.round(value * 10) / 10;
 };
 
+// Convert canvas to grayscale for AI training optimization
+const convertToGrayscale = (canvas: HTMLCanvasElement): HTMLCanvasElement => {
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return canvas;
+  
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const data = imageData.data;
+  
+  // Use architectural drawing optimized weights
+  // Emphasizes lines and structural elements
+  for (let i = 0; i < data.length; i += 4) {
+    // Modified weights for technical drawings (higher red channel for better line detection)
+    const gray = data[i] * 0.4 + data[i + 1] * 0.4 + data[i + 2] * 0.2;
+    data[i] = gray;     // R
+    data[i + 1] = gray; // G
+    data[i + 2] = gray; // B
+    // Alpha channel (data[i + 3]) remains unchanged
+  }
+  
+  ctx.putImageData(imageData, 0, 0);
+  return canvas;
+};
+
 
 // Wall Merging Helper: isWallDuplicate
 const isWallDuplicate = (wall1: StructuralElement, wall2: StructuralElement, tolerance: number): boolean => {
@@ -250,6 +273,8 @@ const App: React.FC = () => {
   const [structuralElementMode, setStructuralElementMode] = useState<StructuralElementMode>('none');
   const [pendingElementType, setPendingElementType] = useState<StructuralElementType>('stair');
   // const [wallDrawingMode, setWallDrawingMode] = useState<'freehand' | 'grid_snap'>('grid_snap'); // Wall drawing mode deprecated
+  
+  const [exportFormat, setExportFormat] = useState<'grayscale' | 'color'>('grayscale'); // Default to grayscale for AI training
 
 
   const sanitizeForFilename = (name: string): string => {
@@ -453,19 +478,12 @@ const App: React.FC = () => {
     }
   };
 
-  const addCommonStructuralElements = (layoutType: 'residential' | 'apartment', currentGridDims: GridDimensions) => {
-    let commonElements: StructuralElement[] = [];
-    if (layoutType === 'residential') {
-      commonElements = [
-        { type: 'stair', grid_x: roundGridCoordinate(Math.min(6, currentGridDims.width_grids - 2)), grid_y: roundGridCoordinate(Math.min(8, currentGridDims.height_grids - 2)), grid_width: roundGridCoordinate(2), grid_height: roundGridCoordinate(2), name: 'main_stairs' },
-        { type: 'entrance', grid_x: roundGridCoordinate(Math.min(2, currentGridDims.width_grids - 1)), grid_y: roundGridCoordinate(Math.min(9, currentGridDims.height_grids - 1)), grid_width: roundGridCoordinate(1), grid_height: roundGridCoordinate(1), name: 'front_entrance' }
-      ];
-    } else if (layoutType === 'apartment') {
-      commonElements = [
-        { type: 'stair', grid_x: roundGridCoordinate(Math.min(4, currentGridDims.width_grids - 2)), grid_y: roundGridCoordinate(Math.min(6, currentGridDims.height_grids - 2)), grid_width: roundGridCoordinate(2), grid_height: roundGridCoordinate(2), name: 'stairs' },
-        { type: 'entrance', grid_x: roundGridCoordinate(Math.min(1, currentGridDims.width_grids - 1)), grid_y: roundGridCoordinate(Math.min(7, currentGridDims.height_grids - 1)), grid_width: roundGridCoordinate(1), grid_height: roundGridCoordinate(1), name: 'entrance' }
-      ];
-    }
+  const addCommonStructuralElements = (currentGridDims: GridDimensions) => {
+    const commonElements: StructuralElement[] = [
+      { type: 'stair', grid_x: roundGridCoordinate(Math.min(6, currentGridDims.width_grids - 2)), grid_y: roundGridCoordinate(Math.min(8, currentGridDims.height_grids - 2)), grid_width: roundGridCoordinate(2), grid_height: roundGridCoordinate(2), name: 'main_stairs' },
+      { type: 'entrance', grid_x: roundGridCoordinate(Math.min(2, currentGridDims.width_grids - 1)), grid_y: roundGridCoordinate(Math.min(9, currentGridDims.height_grids - 1)), grid_width: roundGridCoordinate(1), grid_height: roundGridCoordinate(1), name: 'front_entrance' }
+    ];
+    
     setStructuralElements(commonElements.filter(el =>
         el.grid_x >= 0 && el.grid_y >= 0 &&
         (el.grid_width || 0) > 0 && (el.grid_height || 0) > 0 &&
@@ -474,19 +492,14 @@ const App: React.FC = () => {
     ));
   };
 
-  const handleQuickZoneSetup = (layoutType: 'residential' | 'apartment') => {
-    let newGridDimensions: GridDimensions;
-    if (layoutType === 'residential') {
-      newGridDimensions = { width_grids: 14, height_grids: 10 };
-    } else {
-      newGridDimensions = { width_grids: 10, height_grids: 8 };
-    }
+  const handleQuickZoneSetup = () => {
+    const newGridDimensions: GridDimensions = { width_grids: 14, height_grids: 10 };
     setGridDimensions(newGridDimensions);
     setMajorZones(calculateRealisticZones(newGridDimensions));
-    addCommonStructuralElements(layoutType, newGridDimensions);
+    addCommonStructuralElements(newGridDimensions);
 
     if (pdfDoc) {
-      setStatusMessage(`Quick setup '${layoutType}' applied. Grid: ${newGridDimensions.width_grids}x${newGridDimensions.height_grids}. Zones & elements updated.`);
+      setStatusMessage(`Quick setup for single-family house applied. Grid: ${newGridDimensions.width_grids}x${newGridDimensions.height_grids}. Zones & elements updated.`);
     }
   };
 
@@ -644,9 +657,14 @@ const App: React.FC = () => {
   const validateStructuralElements = (elementsToValidate: StructuralElement[], floor: string): { valid: boolean; message: string } => {
     const nonWallElements = elementsToValidate.filter(el => el.type !== 'structural_wall');
     
-    if (floor === "1F" && !nonWallElements.some(el => el.type === 'entrance')) {
-      return { valid: false, message: "1F requires at least one entrance element." };
-    } else if (floor !== "1F") {
+    if (floor === "1F") {
+      if (!nonWallElements.some(el => el.type === 'entrance')) {
+        return { valid: false, message: "1F requires at least one entrance element." };
+      }
+      if (!nonWallElements.some(el => el.type === 'stair')) {
+        return { valid: false, message: "1F requires at least one stair element." };
+      }
+    } else {
       if (nonWallElements.some(el => el.type === 'entrance')) {
         return { valid: false, message: `${floor} should not have entrance. Entrances are for 1F.` };
       }
@@ -724,6 +742,11 @@ const App: React.FC = () => {
       if (srcWidth > 0 && srcHeight > 0) finalCroppedCtx.drawImage(highDpiPageCanvas, srcX, srcY, srcWidth, srcHeight, 0, 0, srcWidth, srcHeight);
       else { finalCroppedCanvas.width = 1; finalCroppedCanvas.height = 1; finalCroppedCtx.clearRect(0,0,1,1); }
 
+      // Apply grayscale conversion if selected
+      if (exportFormat === 'grayscale') {
+        convertToGrayscale(finalCroppedCanvas);
+      }
+
       const pngDataUrl = finalCroppedCanvas.toDataURL('image/png');
       downloadDataUrl(pngDataUrl, currentOutputPngFilename);
 
@@ -753,6 +776,11 @@ const App: React.FC = () => {
         total_approximate_area: majorZones.reduce((sum, zone) => sum + zone.approximate_grids, 0),
         element_summary: elementSummary,
         annotation_metadata: annotationMetadata,
+        export_settings: {
+          format: exportFormat,
+          optimized_for: 'diffusion_training',
+          color_space: exportFormat === 'grayscale' ? 'grayscale_8bit' : 'rgb_24bit'
+        }
       };
 
       const jsonString = JSON.stringify(layoutMetadata, null, 2);
@@ -845,6 +873,7 @@ const App: React.FC = () => {
         structuralElementMode={structuralElementMode} pendingElementType={pendingElementType}
         onToggleStructuralMode={handleToggleStructuralMode} onDeleteStructuralElement={handleDeleteStructuralElement}
         setStatusMessage={setStatusMessage}
+        exportFormat={exportFormat} onExportFormatChange={setExportFormat}
         // wallDrawingMode and onWallDrawingModeChange are removed
       />
 

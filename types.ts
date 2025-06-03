@@ -59,6 +59,12 @@ export interface AnnotationMetadata {
   drawing_scale: string;
 }
 
+export interface ExportSettings {
+  format: 'grayscale' | 'color';
+  optimized_for?: string;
+  color_space?: string;
+}
+
 export interface LayoutMetadata {
   grid_px: number;
   grid_mm: number;
@@ -69,6 +75,7 @@ export interface LayoutMetadata {
   total_approximate_area?: number; // in grid units or square meters based on grid_mm
   element_summary?: ElementSummary;
   annotation_metadata?: AnnotationMetadata;
+  export_settings?: ExportSettings;
 }
 
 export type StructuralElementMode = 'place' | 'edit' | 'none';

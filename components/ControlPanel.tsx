@@ -34,7 +34,7 @@ interface ControlPanelProps {
   isZoomOutDisabled: boolean;
   gridDimensions: GridDimensions;
   onGridDimensionsChange: (dimensions: GridDimensions) => void;
-  onQuickZoneSetup: (layoutType: 'residential' | 'apartment') => void;
+  onQuickZoneSetup: () => void;
   showGridOverlay: boolean;
   onToggleGridOverlay: () => void;
   majorZones: ZoneDefinition[];
@@ -46,6 +46,8 @@ interface ControlPanelProps {
   onToggleStructuralMode: (type: StructuralElementType) => void;
   onDeleteStructuralElement: (index: number) => void;
   setStatusMessage: (message: string) => void;
+  exportFormat: 'grayscale' | 'color';
+  onExportFormatChange: (format: 'grayscale' | 'color') => void;
   // wallDrawingMode?: 'freehand' | 'grid_snap'; // Deprecated
   // onWallDrawingModeChange?: (mode: 'freehand' | 'grid_snap') => void; // Deprecated
 }
@@ -89,6 +91,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   isZoomInDisabled, isZoomOutDisabled, gridDimensions, onGridDimensionsChange, onQuickZoneSetup,
   showGridOverlay, onToggleGridOverlay, majorZones, structuralElements, structuralElementMode,
   pendingElementType, onToggleStructuralMode, onDeleteStructuralElement, setStatusMessage,
+  exportFormat, onExportFormatChange,
   // wallDrawingMode, onWallDrawingModeChange // Deprecated
 }) => {
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -152,10 +155,9 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                 <span className="text-xs text-green-400 ml-1">Auto</span>
               </div>
 
-              <div className="flex items-center space-x-1" title="Apply pre-defined zone and grid settings">
+              <div className="flex items-center space-x-1" title="Apply pre-defined zone and grid settings for single-family house">
                 <Home size={iconSize-2} className="text-green-400" />
-                <button onClick={() => onQuickZoneSetup('residential')} className={`${secondaryButtonClass} text-xs px-2 py-1`} disabled={!pdfLoaded}>Residential</button>
-                <button onClick={() => onQuickZoneSetup('apartment')} className={`${secondaryButtonClass} text-xs px-2 py-1`} disabled={!pdfLoaded}>Apartment</button>
+                <button onClick={onQuickZoneSetup} className={`${secondaryButtonClass} text-xs px-2 py-1`} disabled={!pdfLoaded}>Quick Setup</button>
               </div>
                <button onClick={onToggleGridOverlay} className={`${iconButtonClass} px-2`} disabled={!pdfLoaded} title={showGridOverlay ? "Hide Grid Overlay" : "Show Grid Overlay"}>
                   {showGridOverlay ? <EyeOff size={iconSize-2} /> : <Eye size={iconSize-2} />}
@@ -268,6 +270,34 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
             <CaseSensitive size={iconSize-2} className="text-gray-400" />
             <label htmlFor="scale-input" className="text-sm font-medium text-gray-300">Scale 1:</label>
             <input id="scale-input" type="number" min="1" step="1" value={drawingScaleDenominator} onChange={(e) => onDrawingScaleChange(parseInt(e.target.value,10))} className={inputBaseClass} disabled={!pdfLoaded} title="Drawing Scale Denominator"/>
+          </div>
+          <div className="flex items-center space-x-1.5">
+            <label className="text-sm font-medium text-gray-300">Export:</label>
+            <div className="flex rounded-md shadow-sm" role="group">
+              <button 
+                onClick={() => onExportFormatChange('grayscale')} 
+                className={`px-3 py-1.5 text-xs font-medium rounded-l-md border ${
+                  exportFormat === 'grayscale' 
+                    ? 'bg-sky-600 text-white border-sky-600' 
+                    : 'bg-gray-700 text-gray-300 border-gray-600 hover:bg-gray-600'
+                } transition-colors`}
+                disabled={!pdfLoaded}
+                title="Recommended for AI training"
+              >
+                Grayscale
+              </button>
+              <button 
+                onClick={() => onExportFormatChange('color')} 
+                className={`px-3 py-1.5 text-xs font-medium rounded-r-md border-t border-r border-b ${
+                  exportFormat === 'color' 
+                    ? 'bg-sky-600 text-white border-sky-600' 
+                    : 'bg-gray-700 text-gray-300 border-gray-600 hover:bg-gray-600'
+                } transition-colors`}
+                disabled={!pdfLoaded}
+              >
+                Color
+              </button>
+            </div>
           </div>
           <button onClick={onProcess} disabled={isProcessing || !pdfLoaded} className={`${primaryButtonClass} whitespace-nowrap`}>
             {isProcessing ? ( <svg className="animate-spin -ml-1 mr-2 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"> <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle> <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path> </svg> ) : ( <Download size={iconSize} className="mr-2" /> )}
